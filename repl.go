@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/mike-the-math-man/go_pokedex/internal"
 )
 
 func cleanInput(text string) []string {
@@ -21,7 +23,7 @@ func cleanInput(text string) []string {
 	return output
 }
 
-func commandExit(c *config) error {
+func commandExit(c *config, cache *internal.Cache) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	defer os.Exit(0)
 	return nil
@@ -30,7 +32,7 @@ func commandExit(c *config) error {
 type cliCommand struct {
 	name        string
 	description string
-	callback    func(*config) error
+	callback    func(*config, *internal.Cache) error
 }
 
 var registry map[string]cliCommand
@@ -63,16 +65,16 @@ func get_Commands() map[string]cliCommand {
 	return registry
 }
 
-func do_cliCommand(s string, c *config) {
+func do_cliCommand(s string, c *config, cached_data *internal.Cache) {
 	cli_return, ok := get_Commands()[s]
 	if ok {
-		cli_return.callback(c)
+		cli_return.callback(c, cached_data)
 	} else {
 		fmt.Println("Unknown command")
 	}
 }
 
-func help(c *config) error {
+func help(c *config, cache *internal.Cache) error {
 	fmt.Println("Welcome to the Pokedex!\nUsage:")
 	fmt.Println()
 	commands := get_Commands()
@@ -82,8 +84,8 @@ func help(c *config) error {
 	return nil
 }
 
-func map_func(c *config) error {
-	map_locations, _ := get_map_data(c, true)
+func map_func(c *config, cached_data *internal.Cache) error {
+	map_locations, _ := get_map_data(c, true, cached_data)
 	for i := 0; i < 20; i++ {
 		if i >= len(map_locations.Results) {
 			return fmt.Errorf("Slice index %d out of bounds (slice length = %d)", i, len(map_locations.Results))
@@ -110,7 +112,7 @@ type poke_api_data struct {
 	Results  []location
 }
 
-func get_map_data(c *config, s bool) (poke_api_data, error) {
+func get_map_data(c *config, s bool, cached_data *internal.Cache) (poke_api_data, error) {
 	var url string
 	if s {
 		url = c.Next
@@ -120,6 +122,18 @@ func get_map_data(c *config, s bool) (poke_api_data, error) {
 	if url == "" {
 		fmt.Println("you're on the first page")
 		return poke_api_data{}, nil
+	}
+	cache_map, ok := cached_data.Get(url)
+	if ok {
+		var decoded_cache_map poke_api_data
+		err := json.Unmarshal(cache_map, &decoded_cache_map)
+		if err != nil {
+			fmt.Println("error decoding Request")
+			return poke_api_data{}, err
+		}
+		c.Previous = decoded_cache_map.Previous
+		c.Next = decoded_cache_map.Next
+		return decoded_cache_map, nil
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -143,11 +157,18 @@ func get_map_data(c *config, s bool) (poke_api_data, error) {
 	}
 	c.Previous = decoded_response.Previous
 	c.Next = decoded_response.Next
+	cache_write, err := json.Marshal(decoded_response)
+	if err != nil {
+		fmt.Println("error encoding Request")
+		return poke_api_data{}, err
+	}
+
+	cached_data.Add(url, cache_write)
 	return decoded_response, nil
 }
 
-func map_func_back(c *config) error {
-	map_locations, _ := get_map_data(c, false)
+func map_func_back(c *config, cached_data *internal.Cache) error {
+	map_locations, _ := get_map_data(c, false, cached_data)
 	for i := 0; i < 20; i++ {
 		if i >= len(map_locations.Results) {
 			return fmt.Errorf("Slice index %d out of bounds (slice length = %d)", i, len(map_locations.Results))
