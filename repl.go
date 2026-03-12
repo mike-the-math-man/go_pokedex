@@ -23,7 +23,7 @@ func cleanInput(text string) []string {
 	return output
 }
 
-func commandExit(c *config, cache *internal.Cache) error {
+func commandExit(s string, c *config, cache *internal.Cache) error {
 	fmt.Println("Closing the Pokedex... Goodbye!")
 	defer os.Exit(0)
 	return nil
@@ -32,7 +32,7 @@ func commandExit(c *config, cache *internal.Cache) error {
 type cliCommand struct {
 	name        string
 	description string
-	callback    func(*config, *internal.Cache) error
+	callback    func(string, *config, *internal.Cache) error
 }
 
 var registry map[string]cliCommand
@@ -60,21 +60,26 @@ func get_Commands() map[string]cliCommand {
 				description: "Displays the names of the previous 20 location areas in the Pokemon world",
 				callback:    map_func_back,
 			},
+			"explore": {
+				name:        "explore",
+				description: "Explores a location - takes name of location as input",
+				callback:    explore,
+			},
 		}
 	}
 	return registry
 }
 
-func do_cliCommand(s string, c *config, cached_data *internal.Cache) {
+func do_cliCommand(s string, param string, c *config, cached_data *internal.Cache) {
 	cli_return, ok := get_Commands()[s]
 	if ok {
-		cli_return.callback(c, cached_data)
+		cli_return.callback(param, c, cached_data)
 	} else {
 		fmt.Println("Unknown command")
 	}
 }
 
-func help(c *config, cache *internal.Cache) error {
+func help(s string, c *config, cache *internal.Cache) error {
 	fmt.Println("Welcome to the Pokedex!\nUsage:")
 	fmt.Println()
 	commands := get_Commands()
@@ -84,7 +89,7 @@ func help(c *config, cache *internal.Cache) error {
 	return nil
 }
 
-func map_func(c *config, cached_data *internal.Cache) error {
+func map_func(s string, c *config, cached_data *internal.Cache) error {
 	map_locations, _ := get_map_data(c, true, cached_data)
 	for i := 0; i < 20; i++ {
 		if i >= len(map_locations.Results) {
@@ -167,7 +172,7 @@ func get_map_data(c *config, s bool, cached_data *internal.Cache) (poke_api_data
 	return decoded_response, nil
 }
 
-func map_func_back(c *config, cached_data *internal.Cache) error {
+func map_func_back(s string, c *config, cached_data *internal.Cache) error {
 	map_locations, _ := get_map_data(c, false, cached_data)
 	for i := 0; i < 20; i++ {
 		if i >= len(map_locations.Results) {
@@ -175,5 +180,103 @@ func map_func_back(c *config, cached_data *internal.Cache) error {
 		}
 		fmt.Println(map_locations.Results[i].Name)
 	}
+	return nil
+}
+
+type Resource struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+type ExploreData struct {
+	EncounterMethodRates []struct {
+		EncounterMethod Resource `json:"encounter_method"`
+		VersionDetails  []struct {
+			Rate    int      `json:"rate"`
+			Version Resource `json:"version"`
+		} `json:"version_details"`
+	} `json:"encounter_method_rates"`
+	GameIndex int      `json:"game_index"`
+	ID        int      `json:"id"`
+	Location  Resource `json:"location"`
+	Name      string   `json:"name"`
+	Names     []struct {
+		Language Resource `json:"language"`
+		Name     string   `json:"name"`
+	} `json:"names"`
+	PokemonEncounters []struct {
+		Pokemon        Resource `json:"pokemon"`
+		VersionDetails []struct {
+			EncounterDetails []struct {
+				Chance          int        `json:"chance"`
+				ConditionValues []Resource `json:"condition_values"`
+				MaxLevel        int
+				Method          Resource `json:"method"`
+				MinLevel        int
+			} `json:"encounter_details"`
+			MaxChance int      `json:"max_chance"`
+			Version   Resource `json:"version"`
+		} `json:"version_details"`
+	} `json:"pokemon_encounters"`
+}
+
+func explore(location string, c *config, cached_data *internal.Cache) error {
+	//scanner := bufio.NewScanner(os.Stdin)
+	//fmt.Print("Location > ")
+	//scanner.Scan()
+
+	if location == "" {
+		//fmt.Println("Please enter location after explore")
+		return nil
+	}
+	fmt.Printf("Exploring %s...\n", location)
+	fmt.Println("Found Pokemon:")
+	url := "https://pokeapi.co/api/v2/location-area/" + location //cleanInput(scanner.Text())[0]
+
+	cache_pokemans, ok := cached_data.Get(url)
+	if ok {
+		var decoded_cache_pokemans ExploreData
+		err := json.Unmarshal(cache_pokemans, &decoded_cache_pokemans)
+		if err != nil {
+			fmt.Println("error decoding Request")
+			return err
+		}
+		for _, j := range decoded_cache_pokemans.PokemonEncounters {
+			fmt.Printf(" -%s\n", j.Pokemon.Name)
+		}
+		return nil
+	}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		fmt.Println("error creating NewRequest")
+		return err
+	}
+	client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println("error client Do request")
+		return err
+	}
+	defer res.Body.Close()
+
+	var decoded_explore_data ExploreData
+	decoder := json.NewDecoder(res.Body)
+	err = decoder.Decode(&decoded_explore_data)
+	if err != nil {
+		fmt.Println("error decoding Request")
+		return err
+	}
+	for _, j := range decoded_explore_data.PokemonEncounters {
+		fmt.Printf(" -%s\n", j.Pokemon.Name)
+	}
+
+	cache_write, err := json.Marshal(decoded_explore_data)
+	if err != nil {
+		fmt.Println("error encoding Request")
+		return err
+	}
+
+	cached_data.Add(url, cache_write)
+
 	return nil
 }

@@ -19,7 +19,17 @@ func main() {
 	for {
 		fmt.Print("Pokedex > ")
 		scanner.Scan()
-		do_cliCommand(cleanInput(scanner.Text())[0], &current_config, cached_data)
+		clean_input := cleanInput(scanner.Text())
+		if len(clean_input) > 1 {
+			command := clean_input[0]
+			paramater := clean_input[1]
+			do_cliCommand(command, paramater, &current_config, cached_data)
+		}
+		if len(clean_input) > 0 {
+			command := clean_input[0]
+			do_cliCommand(command, "", &current_config, cached_data)
+		}
+		//fmt.Println("Please enter a command - or type help")
 		//clean_text := cleanInput(scanner.Text())
 		//command := clean_text[0]
 		//fmt.Printf("Your command was: %s\n", clean_text[0])
