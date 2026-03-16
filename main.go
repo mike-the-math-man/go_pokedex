@@ -25,8 +25,7 @@ func main() {
 			command := clean_input[0]
 			paramater := clean_input[1]
 			do_cliCommand(command, paramater, &current_config, cached_data)
-		}
-		if len(clean_input) > 0 {
+		} else if len(clean_input) > 0 {
 			command := clean_input[0]
 			do_cliCommand(command, "", &current_config, cached_data)
 		}
