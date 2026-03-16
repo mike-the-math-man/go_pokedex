@@ -15,6 +15,7 @@ func main() {
 	current_config := config{
 		Next:     "https://pokeapi.co/api/v2/location-area/",
 		Previous: "",
+		Pokedex:  map[string]Pokemon{},
 	}
 	for {
 		fmt.Print("Pokedex > ")
